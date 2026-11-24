@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Tez Taom</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:var(--tg-theme-bg-color,#fffdf7);
+  --tx:var(--tg-theme-text-color,#23201a);
+  --hint:var(--tg-theme-hint-color,#8a8272);
+  --card:var(--tg-theme-secondary-bg-color,#f6f1e4);
+  --saf:#f2b01e;
+  --ink:#23201a;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:96px}
+h1{font-size:24px;margin:0;padding:18px 16px 4px;letter-spacing:-.3px}
+.sub{color:var(--hint);padding:0 16px 10px;font-size:14px}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:8px 16px;position:sticky;top:0;background:var(--bg);z-index:2}
+.tab{flex:none;border:0;border-radius:20px;padding:8px 16px;background:var(--card);color:var(--tx);font:inherit;font-size:15px}
+.tab.on{background:var(--saf);color:var(--ink);font-weight:600}
+.item{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--card)}
+.item .n{flex:1}
+.item .name{font-weight:600}
+.item .price{color:var(--hint);font-size:14px;margin-top:2px}
+.qty{display:flex;align-items:center;gap:10px}
+.qty button,.add{border:0;border-radius:18px;font:inherit;font-weight:700;background:var(--saf);color:var(--ink)}
+.qty button{width:36px;height:36px;font-size:20px}
+.add{padding:8px 18px}
+.qty span{min-width:18px;text-align:center;font-weight:600}
+.bar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:none}
+.bar button,.send{width:100%;border:0;border-radius:14px;padding:15px;font:inherit;font-weight:700;background:var(--ink);color:#fff}
+.bar button{display:flex;justify-content:space-between}
+.view{display:none}.view.on{display:block}
+.sec{padding:8px 16px}
+.sec label{display:block;font-size:14px;color:var(--hint);margin:14px 0 6px}
+.sec input,.sec select,.sec textarea{width:100%;border:1px solid var(--card);background:var(--card);color:var(--tx);border-radius:10px;padding:12px;font:inherit}
+.seg{display:flex;gap:8px}
+.seg button{flex:1;border:0;border-radius:10px;padding:12px;background:var(--card);color:var(--tx);font:inherit}
+.seg button.on{background:var(--saf);color:var(--ink);font-weight:600}
+.line{display:flex;justify-content:space-between;padding:6px 0}
+.tot{font-weight:700;font-size:18px;border-top:1px solid var(--card);margin-top:8px;padding-top:12px}
+.back{border:0;background:none;color:var(--hint);font:inherit;padding:14px 16px}
+.err{color:#d33;padding:8px 0;min-height:20px;font-size:14px}
+</style>
+</head>
+<body>
+<div id="v-menu" class="view on">
+  <h1>Tez Taom</h1>
+  <div class="sub">Taomni tanlang, savatga qo‘shing</div>
+  <div class="tabs" id="tabs"></div>
+  <div id="list"></div>
+  <div class="bar" id="bar"><button id="toCart"><span id="bcnt"></span><span id="bsum"></span></button></div>
+</div>
+
+<div id="v-order" class="view">
+  <button class="back" id="back">‹ Menyuga qaytish</button>
+  <div class="sec">
+    <div id="sum"></div>
+    <label>Qanday olasiz?</label>
+    <div class="seg"><button id="t-pickup" class="on">Olib ketaman</button><button id="t-delivery">Yetkazib bering</button></div>
+    <div id="bbox"><label>Filial</label><select id="branch"></select></div>
+    <div id="abox" style="display:none"><label>Manzil</label><input id="addr" placeholder="Ko‘cha, uy, mo‘ljal"></div>
+    <label>Telefon raqam</label><input id="phone" type="tel" placeholder="+998 90 123 45 67">
+    <label>Izoh (ixtiyoriy)</label><textarea id="note" rows="2" placeholder="Masalan: achchiq bo‘lmasin"></textarea>
+    <div class="err" id="err"></div>
+    <button class="send" id="send">Buyurtma berish</button>
+  </div>
+</div>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+const fmt = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+let MENU = {cats: [], branches: []}, cat = 0, cart = {}, type = "pickup";
+const $ = id => document.getElementById(id);
+const items = () => MENU.cats.flatMap(c => c.items);
+const count = () => Object.values(cart).reduce((a, b) => a + b, 0);
+const total = () => items().reduce((s, i) => s + (cart[i.id] || 0) * i.price, 0);
+
+function renderTabs() {
+  $("tabs").innerHTML = "";
+  MENU.cats.forEach((c, k) => {
+    const b = document.createElement("button");
+    b.className = "tab" + (k === cat ? " on" : "");
+    b.textContent = c.name;
+    b.onclick = () => { cat = k; renderTabs(); renderList(); };
+    $("tabs").appendChild(b);
+  });
+}
+function renderList() {
+  const box = $("list"); box.innerHTML = "";
+  (MENU.cats[cat]?.items || []).forEach(i => {
+    const q = cart[i.id] || 0, row = document.createElement("div");
+    row.className = "item";
+    row.innerHTML = `<div class="n"><div class="name"></div><div class="price">${fmt(i.price)} so‘m</div></div>`;
+    row.querySelector(".name").textContent = i.name;
+    const ctl = document.createElement("div");
+    if (q) {
+      ctl.className = "qty";
+      ctl.innerHTML = `<button>−</button><span>${q}</span><button>+</button>`;
+      ctl.children[0].onclick = () => change(i.id, -1);
+      ctl.children[2].onclick = () => change(i.id, 1);
+    } else {
+      const a = document.createElement("button");
+      a.className = "add"; a.textContent = "Qo‘shish";
+      a.onclick = () => change(i.id, 1);
+      ctl.appendChild(a);
+    }
+    row.appendChild(ctl); box.appendChild(row);
+  });
+  const n = count();
+  $("bar").style.display = n ? "block" : "none";
+  $("bcnt").textContent = `Savat · ${n} ta`;
+  $("bsum").textContent = `${fmt(total())} so‘m`;
+}
+function change(id, d) {
+  const q = Math.max(0, Math.min(50, (cart[id] || 0) + d));
+  if (q) cart[id] = q; else delete cart[id];
+  renderList();
+}
+function show(v) {
+  $("v-menu").classList.toggle("on", v === "menu");
+  $("v-order").classList.toggle("on", v === "order");
+  window.scrollTo(0, 0);
+}
+function renderSummary() {
+  $("sum").innerHTML = "";
+  items().filter(i => cart[i.id]).forEach(i => {
+    const l = document.createElement("div"); l.className = "line";
+    const a = document.createElement("span"); a.textContent = `${i.name} × ${cart[i.id]}`;
+    const b = document.createElement("span"); b.textContent = `${fmt(i.price * cart[i.id])} so‘m`;
+    l.append(a, b); $("sum").appendChild(l);
+  });
+  const t = document.createElement("div"); t.className = "line tot";
+  t.innerHTML = `<span>Jami</span><span>${fmt(total())} so‘m</span>`;
+  $("sum").appendChild(t);
+}
+function setType(t) {
+  type = t;
+  $("t-pickup").classList.toggle("on", t === "pickup");
+  $("t-delivery").classList.toggle("on", t === "delivery");
+  $("bbox").style.display = t === "pickup" ? "block" : "none";
+  $("abox").style.display = t === "delivery" ? "block" : "none";
+}
+$("toCart").onclick = () => { renderSummary(); show("order"); };
+$("back").onclick = () => show("menu");
+$("t-pickup").onclick = () => setType("pickup");
+$("t-delivery").onclick = () => setType("delivery");
+$("send").onclick = () => {
+  const phone = $("phone").value.replace(/[^\d+]/g, ""), addr = $("addr").value.trim();
+  if (!count()) return ($("err").textContent = "Savat bo‘sh.");
+  if (phone.replace(/\D/g, "").length < 9) return ($("err").textContent = "Telefon raqamni to‘liq kiriting.");
+  if (type === "delivery" && addr.length < 5) return ($("err").textContent = "Yetkazish manzilini kiriting.");
+  const data = {
+    items: Object.entries(cart), type, phone,
+    branch: type === "pickup" ? $("branch").value : "",
+    address: type === "delivery" ? addr : "",
+    note: $("note").value.trim()
+  };
+  if (tg) tg.sendData(JSON.stringify(data));
+  else $("err").textContent = "Bu sahifa faqat Telegram ichida ishlaydi.";
+};
+
+fetch("menu.json", {cache: "no-cache"}).then(r => r.json()).then(m => {
+  MENU = m;
+  (m.branches || []).forEach(b => { const o = document.createElement("option"); o.textContent = b; $("branch").appendChild(o); });
+  renderTabs(); renderList();
+}).catch(() => { $("list").textContent = "Menyuni yuklab bo‘lmadi. Keyinroq urinib ko‘ring."; });
+</script>
+</body>
+</html>
