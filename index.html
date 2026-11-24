@@ -149,19 +149,47 @@ $("toCart").onclick = () => { renderSummary(); show("order"); };
 $("back").onclick = () => show("menu");
 $("t-pickup").onclick = () => setType("pickup");
 $("t-delivery").onclick = () => setType("delivery");
-$("send").onclick = () => {
+const API_URL = "https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev";
+
+$("send").onclick = async () => {
   const phone = $("phone").value.replace(/[^\d+]/g, ""), addr = $("addr").value.trim();
   if (!count()) return ($("err").textContent = "Savat bo‘sh.");
   if (phone.replace(/\D/g, "").length < 9) return ($("err").textContent = "Telefon raqamni to‘liq kiriting.");
   if (type === "delivery" && addr.length < 5) return ($("err").textContent = "Yetkazish manzilini kiriting.");
+  if (!tg || !tg.initData) {
+    $("err").textContent = "Buyurtma berish uchun Mini App'ni Telegram bot ichidan oching.";
+    return;
+  }
+  const btn = $("send");
+  btn.disabled = true;
+  btn.textContent = "Yuborilmoqda...";
+  $("err").textContent = "";
   const data = {
     items: Object.entries(cart), type, phone,
     branch: type === "pickup" ? $("branch").value : "",
     address: type === "delivery" ? addr : "",
     note: $("note").value.trim()
   };
-  if (tg) tg.sendData(JSON.stringify(data));
-  else $("err").textContent = "Bu sahifa faqat Telegram ichida ishlaydi.";
+  try {
+    if (API_URL.includes("YOUR-WORKER-NAME")) throw new Error("Backend manzili hali sozlanmagan.");
+    const response = await fetch(API_URL + "/api/order", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({initData: tg.initData, order: data})
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "Buyurtmani yuborib bo‘lmadi.");
+    $("err").style.color = "#16803c";
+    $("err").textContent = result.message || "Buyurtmangiz qabul qilindi!";
+    btn.textContent = "Buyurtma qabul qilindi";
+    cart = {};
+    renderList();
+  } catch (e) {
+    $("err").style.color = "#d33";
+    $("err").textContent = e.message || "Aloqa xatosi. Qayta urinib ko‘ring.";
+    btn.disabled = false;
+    btn.textContent = "Buyurtma berish";
+  }
 };
 
 fetch("menu.json", {cache: "no-cache"}).then(r => r.json()).then(m => {
