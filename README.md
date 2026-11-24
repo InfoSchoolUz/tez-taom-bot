@@ -1,26 +1,49 @@
-# Tez Taom - Telegram Mini App (buyurtma boti)
+# Tez Taom — Telegram Mini App
 
-Mijoz botdagi "Buyurtma berish" tugmasini bosadi, Mini App ochiladi (menyu, savat, olib ketish/yetkazish).
-Buyurtma Telegram guruhiga tushadi, admin holatini o'zgartiradi, mijozga xabar boradi.
+Mini App frontend GitHub Pages'da, buyurtma API va Telegram webhook esa Cloudflare Workers'da ishlaydi. Render talab qilinmaydi.
 
-## Fayllar
-- `index.html` - Mini App (GitHub Pages'da turadi)
-- `menu.json` - menyu va narxlar (so'mda). Bot narxni FAQAT shu fayldan oladi
-- `bot.py` - Python (aiogram 3) bot
-- `requirements.txt`, `.env.example`
+## 1. GitHub Pages
+Repository Settings → Pages → Deploy from a branch → main / (root).
+Mini App URL: https://infoschooluz.github.io/tez-taom-bot/
 
-## Ishga tushirish
-1. GitHub'da repo oching, hamma fayllarni yuklang (Add file > Upload files).
-2. Settings > Pages > Deploy from a branch > main / (root). Manzil: `https://USERNAME.github.io/REPO/`
-3. Botni hostingda ishga tushiring (start buyrug'i: `python bot.py`). Muhit o'zgaruvchilari:
-   - `BOT_TOKEN` - BotFather tokeni (hech kimga bermang)
-   - `WEBAPP_URL` - 2-qadamdagi manzil
-   - `GROUP_ID` - buyurtmalar guruhi ID si
-   - `ADMIN_IDS` - admin Telegram ID lari (vergul bilan)
-4. ID lar: botga `/id` yozing (sizning ID), guruhda `/id` yozing (guruh ID, minus bilan boshlanadi).
-   Keyin `GROUP_ID` va `ADMIN_IDS` ni hostingda kiritib, botni qayta ishga tushiring.
+## 2. Cloudflare Worker
+1. Cloudflare hisobiga kiring: https://dash.cloudflare.com/
+2. Workers & Pages → Create → Worker yarating (nomi masalan `tez-taom-api`).
+3. `worker.js` kodini Worker editoriga joylang va Deploy qiling.
+4. Worker → Settings → Variables and Secrets bo‘limida quyidagi qiymatlarni qo‘shing:
+   - `BOT_TOKEN` — BotFather bergan token (Secret).
+   - `GROUP_ID` — buyurtmalar guruhi chat ID raqami (masalan -100...).
+   - `ADMIN_IDS` — administrator Telegram ID raqamlari, vergul bilan (masalan 123456,789012).
+   - `WEBHOOK_SECRET` — tasodifiy uzun maxfiy satr (Secret; faqat A-Z, a-z, 0-9, underscore va tire ishlating).
+5. Worker URL manzilini oling, masalan `https://tez-taom-api.<sizning-subdomain>.workers.dev`.
+6. `index.html` ichidagi `API_URL` qiymatini aynan shu Worker URL'iga almashtiring va GitHub'ga commit qiling.
+7. Worker'da `/health` manzilini ochib `{"ok":true}` javobini tekshiring.
+
+## 3. Telegram webhook'ni ulash
+Eski Render'dagi polling bot ishlayotgan bo‘lsa, avval uni STOP qiling. Telegram'da webhook va getUpdates polling bir vaqtda ishlamaydi.
+
+Quyidagi URL'ni brauzerda oching; `<BOT_TOKEN>`, `<WORKER_URL>` va `<WEBHOOK_SECRET>` o‘rniga o‘zingizning qiymatlaringizni qo‘ying:
+
+```
+https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WORKER_URL>/telegram/webhook&secret_token=<WEBHOOK_SECRET>
+```
+
+Javobda `"ok":true` chiqishi kerak. Tokenni hech kimga yubormang va GitHub'ga joylamang.
+
+## 4. BotFather
+BotFather → /setmenubutton → botni tanlang → URL:
+`https://infoschooluz.github.io/tez-taom-bot/`
+Tugma nomi: `🍔 Buyurtma berish`
+
+## 5. Buyurtma oqimi
+- Mini App Telegram `initData` ni API'ga yuboradi.
+- Worker imzoni tekshiradi va narxlarni serverdagi menyu ro‘yxatidan hisoblaydi.
+- Buyurtma guruhga yuboriladi.
+- Admin guruhdagi inline tugmalar orqali qabul qiladi, tayyorlaydi yoki bekor qiladi; mijozga bot xabar beradi.
 
 ## Eslatma
-- Bu birinchi versiya: faqat naqd to'lov. Click/Payme va AI qatlami keyingi bosqichda.
-- Mini App `sendData` ishlatadi: faqat botdagi pastki tugma orqali ochilganda buyurtma yuboradi.
-- Menyuni o'zgartirish: `menu.json` ni GitHub'da tahrirlang (bot ham qayta ishga tushsin).
+- Bot tokenini hech qachon frontend yoki GitHub repozitoriyga yozmang.
+- Bot guruhga qo‘shilgan va xabar yuborish huquqiga ega bo‘lishi kerak.
+- Admin ID'larini `ADMIN_IDS` ga kiriting.
+- `bot.py` avvalgi polling varianti sifatida qoldirilgan; Worker webhook rejimi yoqilganda Render'dagi eski polling jarayonini to‘xtating.
+- Bepul Cloudflare Workers tarifida limitlar mavjud; amaldagi shartlarni Cloudflare tarif sahifasidan tekshiring.
