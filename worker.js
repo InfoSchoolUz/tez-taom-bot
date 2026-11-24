@@ -59,8 +59,8 @@ async function order(req, env) {
   const lines = []; let total = 0;
   for (const pair of d.items) {
     if (!Array.isArray(pair) || pair.length !== 2) continue;
-    const [id, rawQty] = pair, item = MENU[id], qty = Math.max(1,Math.min(50,Math.trunc(Number(rawQty))));
-    if (!item || !Number.isFinite(qty)) continue;
+    const [id, rawQty] = pair, item = MENU[id], qty = Number(rawQty);
+    if (!item || !Number.isInteger(qty) || qty < 1 || qty > 50) continue;
     total += item[1]*qty;
     lines.push("• "+esc(item[0])+" × "+qty+" = "+fmt(item[1]*qty));
   }
