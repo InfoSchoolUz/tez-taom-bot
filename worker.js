@@ -101,7 +101,7 @@ async function webhook(req, env) {
     rdy:["tayyor","🍽 Buyurtmangiz tayyor!"],
     can:["bekor qilindi","❌ Buyurtmangiz bekor qilindi."]
   };
-  if (parts[0] !== "o" || !/^\\d+$/.test(userId || "") || !states[action]) {
+  if (parts[0] !== "o" || !/^\d+$/.test(userId || "") || !states[action]) {
     await telegram(env,"answerCallbackQuery",{callback_query_id:q.id,text:"Buyurtma ma’lumoti noto‘g‘ri."});
     return new Response("ok");
   }
