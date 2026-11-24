@@ -19,20 +19,29 @@ async function hmac(key, data) {
   return new Uint8Array(await crypto.subtle.sign("HMAC", k, new TextEncoder().encode(data)));
 }
 const hex = bytes => [...bytes].map(b => b.toString(16).padStart(2,"0")).join("");
-async function verifyInitData(initData, token) {
-  if (!initData || !token) return null;
-  const p = new URLSearchParams(initData), hash = p.get("hash");
-  if (!hash) return null;
+async function verifyInitData(initData, rawToken) {
+  const token = String(rawToken || "").trim();
+  if (!initData || !token) return { user: null, reason: "no_data_or_token" };
+  const p = new URLSearchParams(initData);
+  const hash = (p.get("hash") || "").trim().toLowerCase();
+  if (!hash) return { user: null, reason: "no_hash" };
   p.delete("hash");
   const check = [...p.entries()].sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k+"="+v).join("\n");
   const secret = await hmac(new TextEncoder().encode("WebAppData"), token);
-  if (hex(await hmac(secret, check)) !== hash) return null;
+  if (hex(await hmac(secret, check)) !== hash) return { user: null, reason: "bad_signature" };
   const authDate = Number(p.get("auth_date") || 0);
-  if (!authDate || Math.abs(Date.now()/1000-authDate) > 86400) return null;
-  try { return JSON.parse(p.get("user") || "null"); } catch { return null; }
+  if (!authDate || Math.abs(Date.now()/1000 - authDate) > 86400) return { user: null, reason: "expired_auth_date" };
+  try {
+    const user = JSON.parse(p.get("user") || "null");
+    if (!user || !user.id) return { user: null, reason: "no_user" };
+    return { user, reason: "ok" };
+  } catch {
+    return { user: null, reason: "bad_user_json" };
+  }
 }
 async function telegram(env, method, body) {
-  const r = await fetch("https://api.telegram.org/bot"+env.BOT_TOKEN+"/"+method, {
+  const token = String(env.BOT_TOKEN || "").trim();
+  const r = await fetch("https://api.telegram.org/bot"+token+"/"+method, {
     method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
   });
   const d = await r.json();
@@ -52,8 +61,14 @@ function keyboard(userId, state) {
 }
 async function order(req, env) {
   const body = await req.json();
-  const user = await verifyInitData(body.initData, env.BOT_TOKEN);
-  if (!user || !user.id) return json({ok:false,error:"Telegram foydalanuvchisi tasdiqlanmadi. Botni qayta oching."},401);
+  const check = await verifyInitData(body.initData, env.BOT_TOKEN);
+  if (!check.user) {
+    return json({
+      ok: false,
+      error: "Telegram foydalanuvchisi tasdiqlanmadi (" + check.reason + "). Botni qayta oching."
+    }, 401);
+  }
+  const user = check.user;
   const d = body.order || {};
   if (!Array.isArray(d.items) || !d.items.length) return json({ok:false,error:"Savat bo‘sh."},400);
   const lines = []; let total = 0;
@@ -72,7 +87,8 @@ async function order(req, env) {
   const note = String(d.note || "").slice(0,200);
   if (phone.replace(/\D/g,"").length < 9 || (type === "Yetkazib berish" && address.length < 5))
     return json({ok:false,error:"Telefon raqam yoki manzilni tekshiring."},400);
-  if (!env.GROUP_ID) return json({ok:false,error:"Buyurtmalar guruhi hali sozlanmagan."},500);
+  const groupId = String(env.GROUP_ID || "").trim();
+  if (!groupId) return json({ok:false,error:"Buyurtmalar guruhi hali sozlanmagan."},500);
   const oid = String(Date.now()).slice(-8);
   const customer = esc([user.first_name,user.last_name].filter(Boolean).join(" ") || "Telegram mijoz");
   const msg = "🆕 <b>Buyurtma №"+oid+"</b>\n\n"+lines.join("\n")+
@@ -80,19 +96,21 @@ async function order(req, env) {
     (address ? "\nManzil: "+esc(address) : "\nFilial: "+esc(branch))+
     "\nTelefon: "+esc(phone)+(note ? "\nIzoh: "+esc(note) : "")+
     "\nMijoz: <a href=\"tg://user?id="+user.id+"\">"+customer+"</a>";
-  await telegram(env,"sendMessage",{chat_id:env.GROUP_ID,text:msg,parse_mode:"HTML",reply_markup:keyboard(user.id,"new")});
+  await telegram(env,"sendMessage",{chat_id:groupId,text:msg,parse_mode:"HTML",reply_markup:keyboard(user.id,"new")});
   return json({ok:true,message:"Buyurtma №"+oid+" qabul qilindi. Jami: "+fmt(total)+" so‘m."});
 }
 async function webhook(req, env) {
-  if (req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== env.WEBHOOK_SECRET)
+  const secret = String(env.WEBHOOK_SECRET || "").trim();
+  if (secret && req.headers.get("X-Telegram-Bot-Api-Secret-Token") !== secret)
     return new Response("Forbidden",{status:403});
   const update = await req.json();
   const q = update.callback_query;
   if (!q) return new Response("ok");
   const parts = String(q.data || "").split(":");
   const userId = parts[1], action = parts[2];
-  const admins = (env.ADMIN_IDS || "").split(",").map(x=>x.trim()).filter(Boolean);
-  if (String(q.message?.chat?.id) !== String(env.GROUP_ID) || !admins.includes(String(q.from?.id))) {
+  const admins = String(env.ADMIN_IDS || "").split(",").map(x=>x.trim()).filter(Boolean);
+  const groupId = String(env.GROUP_ID || "").trim();
+  if (String(q.message?.chat?.id) !== groupId || !admins.includes(String(q.from?.id))) {
     await telegram(env,"answerCallbackQuery",{callback_query_id:q.id,text:"Sizda ruxsat yo‘q.",show_alert:true});
     return new Response("ok");
   }
@@ -132,3 +150,4 @@ export default {
     return json({ok:false,error:"Not found"},404);
   }
 };
+    
