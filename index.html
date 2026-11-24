@@ -83,14 +83,18 @@ const FALLBACK_MENU = {
         {id: "lavash", name: "Lavash", price: 28000},
         {id: "burger", name: "Burger", price: 32000},
         {id: "hotdog", name: "Hot-dog", price: 18000},
-        {id: "fri", name: "Kartoshka fri", price: 15000}
+        {id: "fri", name: "Kartoshka fri", price: 15000},
+        {id: "osh", name: "Osh", price: 38000},
+        {id: "shashlik", name: "Shashlik (1 six)", price: 14000},
+        {id: "lagmon", name: "Lag‘mon", price: 30000}
       ]
     },
     {
       name: "Ichimliklar",
       items: [
         {id: "cola", name: "Coca-Cola 0.5 l", price: 8000},
-        {id: "choy", name: "Choy", price: 5000}
+        {id: "choy", name: "Choy", price: 5000},
+        {id: "sok", name: "Sok", price: 9000}
       ]
     }
   ]
@@ -187,12 +191,14 @@ $("send").onclick = async () => {
   if (phone.replace(/\D/g, "").length < 9) return ($("err").textContent = "Telefon raqamni to‘liq kiriting.");
   if (type === "delivery" && addr.length < 5) return ($("err").textContent = "Yetkazish manzilini kiriting.");
   if (!tg || !tg.initData) {
+    $("err").style.color = "#d33";
     $("err").textContent = "Buyurtma berish uchun Mini App'ni Telegram bot ichidan oching.";
     return;
   }
   const btn = $("send");
   btn.disabled = true;
   btn.textContent = "Yuborilmoqda...";
+  $("err").style.color = "#d33";
   $("err").textContent = "";
   const data = {
     items: Object.entries(cart), type, phone,
@@ -201,7 +207,6 @@ $("send").onclick = async () => {
     note: $("note").value.trim()
   };
   try {
-    if (!API_URL || API_URL.includes("YOUR-WORKER-NAME")) throw new Error("Backend manzili hali sozlanmagan.");
     const response = await fetch(API_URL + "/api/order", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
