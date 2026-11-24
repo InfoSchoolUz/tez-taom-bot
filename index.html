@@ -74,15 +74,45 @@ h1{font-size:24px;margin:0;padding:18px 16px 4px;letter-spacing:-.3px}
 const tg = window.Telegram && Telegram.WebApp;
 if (tg) { tg.ready(); tg.expand(); }
 const fmt = n => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-let MENU = {cats: [], branches: []}, cat = 0, cart = {}, type = "pickup";
+const FALLBACK_MENU = {
+  branches: ["1-filial"],
+  cats: [
+    {
+      name: "Asosiy",
+      items: [
+        {id: "lavash", name: "Lavash", price: 28000},
+        {id: "burger", name: "Burger", price: 32000},
+        {id: "hotdog", name: "Hot-dog", price: 18000},
+        {id: "fri", name: "Kartoshka fri", price: 15000}
+      ]
+    },
+    {
+      name: "Ichimliklar",
+      items: [
+        {id: "cola", name: "Coca-Cola 0.5 l", price: 8000},
+        {id: "choy", name: "Choy", price: 5000}
+      ]
+    }
+  ]
+};
+let MENU = FALLBACK_MENU, cat = 0, cart = {}, type = "pickup";
 const $ = id => document.getElementById(id);
-const items = () => MENU.cats.flatMap(c => c.items);
+const items = () => MENU.cats.flatMap(c => c.items || []);
 const count = () => Object.values(cart).reduce((a, b) => a + b, 0);
 const total = () => items().reduce((s, i) => s + (cart[i.id] || 0) * i.price, 0);
 
+function renderBranches(branches) {
+  const sel = $("branch");
+  sel.innerHTML = "";
+  (branches || []).forEach(b => {
+    const o = document.createElement("option");
+    o.textContent = b;
+    sel.appendChild(o);
+  });
+}
 function renderTabs() {
   $("tabs").innerHTML = "";
-  MENU.cats.forEach((c, k) => {
+  (MENU.cats || []).forEach((c, k) => {
     const b = document.createElement("button");
     b.className = "tab" + (k === cat ? " on" : "");
     b.textContent = c.name;
@@ -171,7 +201,7 @@ $("send").onclick = async () => {
     note: $("note").value.trim()
   };
   try {
-    if (API_URL.includes("YOUR-WORKER-NAME")) throw new Error("Backend manzili hali sozlanmagan.");
+    if (!API_URL || API_URL.includes("YOUR-WORKER-NAME")) throw new Error("Backend manzili hali sozlanmagan.");
     const response = await fetch(API_URL + "/api/order", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -192,11 +222,22 @@ $("send").onclick = async () => {
   }
 };
 
-fetch("menu.json", {cache: "no-cache"}).then(r => r.json()).then(m => {
-  MENU = m;
-  (m.branches || []).forEach(b => { const o = document.createElement("option"); o.textContent = b; $("branch").appendChild(o); });
-  renderTabs(); renderList();
-}).catch(() => { $("list").textContent = "Menyuni yuklab bo‘lmadi. Keyinroq urinib ko‘ring."; });
+renderBranches(MENU.branches);
+renderTabs();
+renderList();
+
+fetch("menu.json?v=" + Date.now(), {cache: "no-store"})
+  .then(r => r.ok ? r.json() : Promise.reject())
+  .then(m => {
+    if (m && Array.isArray(m.cats) && m.cats.length) {
+      MENU = m;
+      cat = 0;
+      renderBranches(m.branches || FALLBACK_MENU.branches);
+      renderTabs();
+      renderList();
+    }
+  })
+  .catch(() => {});
 </script>
 </body>
 </html>
